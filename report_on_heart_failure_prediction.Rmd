@@ -1,0 +1,873 @@
+---
+title: "Report on Heart Failure Prediction"
+author: "Chao Wu"
+date: "2020/12/30"
+geometry: margin=2cm
+output: pdf_document
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.align = 'center')
+
+# library used in this rmarkdown
+if(!require(kableExtra)) install.packages("kableExtra", repos = "http://cran.us.r-project.org")
+
+library(kableExtra)
+```
+
+\newpage
+\tableofcontents
+\newpage
+
+\newpage
+
+# Executive summary
+In this choose-your-own project, we can choose our own dataset that is not well-known. I picked up the heart failure dataset for this project. The dataset contains 299 observations and 12 features which include body, lifestyle, and clinical information; the outcomes indicate whether the patient survived or not from the heart failure in binary format. The goal of this project is to use at least two different machine learning algorithms to predict the death events by heart failure and at least one of the algorithms are advanced than Logistic Regression.  
+
+Before creating models, I applied the following steps:  
+
+* Data extraction – I downloaded the dataset from the website, then uploaded to my GitHub repository. So, the dataset is ready to download from the repository.
+* Data exploration – By exploring the data, I analysed how risky smoking, diabetes, and high blood pressure are to the death by heart failure. I also analysed whether smoking, diabetes, and high blood pressure would give different genders different impact to heart failure.
+* Data wrangling – Because features are in different ranges, I performed standardization to the feature columns. So, features will result in a zero mean and unit variance.
+* Data partition – To improve the accuracy, I analysed the data partition ratio which used to split the dataset. The best ratio that gives the highest accuracy on training will be used to split the dataset. The dataset will be split into training and test sets using the best ratio.
+
+I started with Logistic Regression, as this is the basic algorithm to solve classification problem. I also created other models using K-nearest neighbour (KNN), LDA, Decision tree, Random forest, and SVM Linear algorithms. The Ensemble model has been created based on the majority of the votes using all predicted results obtained from previous models. I evaluated each model by computing accuracy on training, accuracy on test, sensitivity (TPR), the false positive rate (FPR), recall, precision, and F1-score. From the evaluation results, I compared each model’s performance and identified which model is more accurate when classifying each class.  
+
+The most important features given by each model shows which feature(s) having more predictive power. By analysing the correlations between different feature columns and the outcome column, to find out whether there is any connection between the correlation and predictive power in a model. There are some limitations in the models. To improve the speed and accuracy in the future, I looked at dimension reduction, prevalence in the dataset, and other classification algorithms that might be more closely to fit the dataset. \newpage
+
+# Introduction
+This choose-your-own project uses machine learning algorithms to predict death events by heart failure.  
+
+For this project, we can choose a dataset that is not well-known. So, I chose the dataset which consists of heart failure clinical records from 299 patients. The dataset was downloaded from Kaggle: https://www.kaggle.com/andrewmvd/heart-failure-clinical-data. It contains 299 observations and 12 features which include body, lifestyle, and clinical information. There are only two outcomes, i.e., survival or death caused by heart failure.  
+
+The objectives of this project are to use at least two different algorithms to predict the death events, with at least one being more advanced than Logistic Regression.  
+
+As there are two classes to predict, this is a classification problem. To solve this problem, the key steps I took are the following:  
+
+1. Extract the dataset;
+2. Explore the dataset;
+3. Check for missing values and then perform standardization or Z-score normalization in each column;
+4. Analyse data partition ratios and then split the dataset into training and test sets based on the best ratio from the analysis;
+5. Start with Logistic Regression;
+6. Train the model using cross-validation;
+7. Use the trained model to predict the results;
+8. Evaluate the model by computing accuracy on training, accuracy on test, sensitivity (TPR), the false positive rate (FPR), recall, precision, and F1-score;
+9. Repeat steps 5, 6, and 7 for KNN, LDA, Decision tree, Random forest, SVM Linear;
+10. Build an ensemble based on the majority of the votes using all predicted results obtained from previous models; Evaluate the ensemble by computing accuracy on test, sensitivity (TPR), the false positive rate (FPR), recall, precision, and F1-score;
+11. Compare all models' results and performance;
+12. Analyse features to find some insights and see what can be improved in the future.
+
+# Library
+In this project, I used the following R libraries:  
+```{r echo=FALSE}
+# automatically install the missing packages
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(matrixStats)) install.packages("matrixStats", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(e1071)) install.packages("e1071", dependencies=TRUE, repos = "http://cran.us.r-project.org")
+if(!require(rpart)) install.packages("rpart", repos = "http://cran.us.r-project.org")
+if(!require(kernlab)) install.packages("kernlab", repos = "http://cran.us.r-project.org")
+
+library(tidyverse)
+library(matrixStats)
+library(caret)
+library(e1071)
+library(rpart)
+library(kernlab)
+```
+library(tidyverse)  
+library(matrixStats)  
+library(caret)  
+library(e1071)  
+library(rpart)  
+library(kernlab)  
+```{r echo=FALSE}
+# number of significant digits to print
+options(digits=5)
+```
+
+# Data extraction
+The website Kaggle will require login to be able to download the dataset. To avoid the login process, I downloaded the dataset from Kaggle website first; then uploaded it to my GitHub repository. The dataset is ready for download from the repository. As the data file is in CSV format, I can read data directly from the downloaded CSV file in R.  
+```{r echo=FALSE, results="hide"}
+# data file URL on GitHub
+githubUrl <- "https://raw.githubusercontent.com/chaowu-wlt/heart-failure-prediction/main/heart_failure_clinical_records_dataset.csv"
+
+# generate a temporary file name
+tmp_filename <- tempfile() 
+
+# download the data file from the url, give it the temporary name
+download.file(githubUrl, tmp_filename) 
+
+# read the data in
+heartFailures <- read_csv(tmp_filename) 
+heartFailures <- as.data.frame(heartFailures)
+
+# erase the downloaded file
+file.remove(tmp_filename)
+```
+# Data exploration
+From Table 1, we can see what the dataset looks like.  
+
+```{r echo=FALSE}
+# look at some data rows in the dataset
+head(heartFailures,10) %>% kable("latex", booktabs=T, caption="some data rows in the dataset") %>% kable_styling(full_width = T, position = "center", latex_options = "hold_position") %>% row_spec(0, angle = 45)
+```
+
+There are `r dim(heartFailures)[1]` samples and `r dim(heartFailures)[2] -1` features in the dataset. Each data row represents a heart failure clinic record from a patient. Some features represent as binary (0 or 1) or Boolean (0 or 1), e.g., in the ‘diabetes’ column, 0 means not having diabetes and 1 means having diabetes; in the ‘sex’ column, 0 means woman and 1 means man; and in the ‘DEATH_EVENT’ column, 0 means survival and 1 for death. The ‘time’ column represents follow-up period in days.  
+
+## Key findings:
+
+* `r mean(heartFailures$DEATH_EVENT == 1)*100`% of patients died caused by heart failure. This is the prevalence or death rate of the dataset, which is low.
+* We know that smoking is not good for health. Just by looking at the ‘smoking’ column, the data doesn’t approve that there are more patients died who smoke than the patients who don't smoke; it shows that smoking doesn’t have strong relationship with death event (Table 2). This means smoking can be considered as a low risk factor. That is, a patient may die not only depending on the amount of cigarette intakes, but also more about the patient’s additional body, lifestyle, and clinical information.
+
+    ```{r echo=FALSE}
+# check if there are more patients died by heart failure who smoke than the patients who don't smoke
+finding2 <- heartFailures %>%
+			group_by(smoking) %>%
+			summarize(death = mean(DEATH_EVENT == 1)) %>%
+			ungroup()
+kable(finding2, "latex", booktabs=T, caption="proportion of death grouped by the patients who smoke or not") %>% kable_styling(position = "center", latex_options = "hold_position")
+```
+
+* By looking at the ‘diabetes’ column, the data shows that diabetes doesn’t have strong relationship with death event (Table 3). Diabetes can be considered as a low risk factor as well.
+
+    ```{r echo=FALSE}
+# check if there are more patients died by heart failure who have diabetes than the patients who don't have
+finding3 <- heartFailures %>%
+			group_by(diabetes) %>%
+			summarize(death = mean(DEATH_EVENT == 1)) %>%
+			ungroup()
+kable(finding3, "latex", booktabs=T, caption="proportion of death grouped by the patients who have diabetes or not") %>% kable_styling(position = "center", latex_options = "hold_position")
+```
+
+* By looking at the ‘high_blood_pressure’ column, the data shows that high blood pressure doesn’t have strong relationship with death event (Table 4). Like smoking and diabetes, high blood pressure can be considered as a low risk factor as well.
+
+    ```{r echo=FALSE}
+# check if there are more patients died by heart failure who have high blood pressure than the patients who don't have
+finding4 <- heartFailures %>%
+			group_by(high_blood_pressure) %>%
+			summarize(death = mean(DEATH_EVENT == 1)) %>%
+			ungroup()
+kable(finding4, "latex", booktabs=T, caption="proportion of death grouped by the patients who have high blood pressure or not") %>% kable_styling(position = "center", latex_options = "hold_position")
+```
+
+* There are more female than male patients died by heart failure who smoke (Table 5). This might indicate that smoking increases more risk to women of having heart failure.
+
+    ```{r echo=FALSE}
+# proportion of death grouped by gender where patients are smoking
+finding5 <- heartFailures %>% 
+			filter(smoking == 1) %>%
+			group_by(sex) %>%
+			summarize(death = mean(DEATH_EVENT == 1)) %>%
+			ungroup()
+kable(finding5, "latex", booktabs=T, caption="proportion of death grouped by gender where patients smoke") %>% kable_styling(position = "center", latex_options = "hold_position")
+```
+
+* There are slightly more female than male patients died by heart failure who have diabetes (Table 6). This might indicate that diabetes increases slightly more risk to women of having heart failure.  
+
+    ```{r echo=FALSE}
+# proportion of death grouped by gender where patients have diabetes		
+finding6 <- heartFailures %>% 
+			filter(diabetes == 1) %>%
+			group_by(sex) %>%
+			summarize(death = mean(DEATH_EVENT == 1)) %>%
+			ungroup()
+kable(finding6, "latex", booktabs=T, caption="proportion of death grouped by gender where patients have diabetes") %>% kable_styling(position = "center", latex_options = "hold_position")
+```
+
+* There are similar number of female and male patients died by heart failure who have high blood pressure (Table 7). This might indicate that high blood pressure has similar risk level for heart failure to different genders.  
+
+    ```{r echo=FALSE}
+# proportion of death grouped by gender where patients have high blood pressure
+finding7 <- heartFailures %>% 
+			filter(high_blood_pressure == 1) %>%
+			group_by(sex) %>%
+			summarize(death = mean(DEATH_EVENT == 1)) %>%
+			ungroup()
+kable(finding7, "latex", booktabs=T, caption="proportion of death grouped by gender where patients have high blood pressure") %>% kable_styling(position = "center", latex_options = "hold_position")
+```
+
+* All female patients died by heart failure who smoke and having diabetes (Table 8). This might indicate that it is absolutely risky to women of having heart failure when they have diabetes and also smoke. This might due to smoking and diabetes increase more risk to women of having heart failure (Table 5 and 6).
+
+    ```{r echo=FALSE}
+# proportion of death grouped by gender where patients are smoking and have diabetes
+finding8 <- heartFailures %>% 
+			filter(diabetes == 1 & smoking == 1) %>%
+			group_by(sex) %>%
+			summarize(death = mean(DEATH_EVENT == 1)) %>%
+			ungroup()
+kable(finding8, "latex", booktabs=T, caption="proportion of death grouped by gender where patients smoke and have diabetes") %>% kable_styling(position = "center", latex_options = "hold_position")
+```
+
+* There are more female than male patients died by heart failure who smoke and also have high blood pressure (Table 9). The proportion of female patients died is significant smaller than that of Table 8. This might due to less impact from high blood pressure to gender (Table 7).
+
+    ```{r echo=FALSE}
+# proportion of death grouped by gender where patients are smoking and have high blood pressure
+finding9 <- heartFailures %>% 
+			filter(high_blood_pressure == 1 & smoking == 1) %>%
+			group_by(sex) %>%
+			summarize(death = mean(DEATH_EVENT == 1)) %>%
+			ungroup()
+kable(finding9, "latex", booktabs=T, caption="proportion of death grouped by gender where patients smoke and have high blood pressure") %>% kable_styling(position = "center", latex_options = "hold_position")
+```
+
+# Data wrangling
+
+## Check for missing values:
+There is `r sum(is.na(heartFailures))` missing value in the dataset, which means we don’t need to fill in any values.  
+
+## Standardization/ Z-score normalization:
+From Table 1, we can see that features span different ranges. I applied standardization to all the feature columns, those features will result in a zero mean and unit variance. As standardization may speed up the distance-based algorithms, such as K-Means, KNN and so on. In addition, “the range of all features should be normalized so that each feature contributes approximately proportionately to the final distance” (“Feature scaling,” 2020).  
+
+The formula of standardization can be represented as following:  
+$$x_{scaled} = (x - \bar x)/SD$$ 
+
+Where:  
+
+* x is the original feature vector;
+* $\bar x$ is the mean of that feature;
+* SD is the standard deviation of that feature.
+```{r echo=FALSE}
+# extract all the features' columns and convert into matrix for matrix operation
+all_features <- as.matrix(heartFailures[, 1:(ncol(heartFailures)-1)])
+```
+
+## Before standardization:
+The column '`r names(which.max(colMeans(all_features)))`' has the highest mean `r max(colMeans(all_features))`; column '`r names(which.min(colMeans(all_features)))`' has the lowest mean `r min(colMeans(all_features))`.  
+
+## After standardization:
+Here are some statistics and exploration from the scaled features:  
+```{r echo=FALSE}
+# apply matrix scaling or standardization, each feature will have zero mean and unit variance 
+x_centered <- sweep(all_features, 2, colMeans(all_features))
+x_scaled <- sweep(x_centered, 2, colSds(all_features), FUN="/")
+# compute the average distance between the first "survival" sample and other "survival" samples
+d_samples <- dist(x_scaled)
+dist_A <- as.matrix(d_samples)[1, heartFailures$DEATH_EVENT == 0]
+# compute the average distance between the first "survival" sample and "death" samples
+dist_D <- as.matrix(d_samples)[1, heartFailures$DEATH_EVENT == 1]
+```
+
+* The first feature column has standard deviation `r sd(x_scaled[, 1])` and mean `r mean(x_scaled[, 1])`. Note that the mean value is approximately equal to zero, but not zero, this is an expected behaviour due to 15 decimal digits of precision of floats.
+* The average distance between the first "survival" sample and other "survival" samples is `r mean(dist_A[2:length(dist_A)])`. 
+* The average distance between the first "survival" sample and "death" samples is `r mean(dist_D)`.
+* These two average distances are very close, this classification task might be tricky for distance-based algorithms. As the samples of different classes might be too close to each other to be differentiated.
+
+# Data partition
+I will split the whole dataset into training set and test set. The training set will be used to develop the algorithms, as well as optimize the algorithm parameters. The test set will be only used for evaluation.  
+
+## Analysis of data partition ratios:
+To find the best partition ratio to improve classification performance, I analysed different partition ratios. Logistic Regression is a basic algorithm to solve classification problem, so, I used Logistic Regression to create a model for this analysis. To avoid overfitting, I only used training set in this analysis. I look for the ratio that gives the highest accuracy on training.  
+
+I took the following steps:  
+
+1. Create a sequence of partition ratios for test set - from 0.1 to 0.5, jump by 0.1;
+2. Split the dataset into training and test sets using a ratio in the sequence;
+3. To make the code run a bit faster, use 10-fold cross-validation with 10% of the observations to train the Logistic Regression model;
+4. Obtain the training accuracy;
+5. Repeat steps 2, 3, and 4 for each ratio in the sequence;
+6. Compare all accuracies and find the ratio that gives the highest accuracy.
+```{r echo=FALSE}
+# convert to data frame for data partition
+x_scaled <- as.data.frame(x_scaled)
+
+# using R 3.6 or later
+set.seed(1, sample.kind="Rounding")
+
+# ratios for test set 
+ratio_on_test_set <- seq(0.1, 0.5, 0.1)
+
+# create data partition with each ratio, then generate accuracy on the training set					   
+partition_results <- map_df (ratio_on_test_set, function (p) {
+	
+	test_index <- createDataPartition(y = heartFailures$DEATH_EVENT, times = 1, p = p, 
+									  list = FALSE)
+
+	# split predictors columns and outcome colummn for training set
+	# variable x for predictors and y for outcome
+	train_x <- x_scaled[-test_index, ]
+	train_y <- heartFailures$DEATH_EVENT[-test_index]
+	
+	# use logistic regression algorithm 
+	# to make the code run a bit faster, use 10-fold cross-validation with 10% of the observations each
+	control <- trainControl(method = "cv", number = 10, p = .9)
+	train_y <- as.factor(train_y)
+	train_glm <- train(train_x, train_y, method="glm", trControl = control)	
+	
+	# store ratio and its corresponding accuracy in a list
+	list (Ratio_on_test_set = p, Accuracy_on_training = train_glm$results["Accuracy"][[1]])
+	
+})
+```
+From Table 10, we can see that the ratio `r ratio_on_test_set[which.max(partition_results$Accuracy_on_training)]` on test set gives the highest accuracy on training. So, I will use this ratio to create training and test sets.  
+
+```{r echo=FALSE}
+# display the result table
+kable(partition_results, "latex", booktabs=T, caption="display partition ratio on test set and its corresponding accuracy on training") %>% kable_styling(position = "center", latex_options = "hold_position")
+
+partition_ratio <- ratio_on_test_set[which.max(partition_results$Accuracy_on_training)]
+```
+
+## Spliting dataset into training set and test set:
+The whole dataset has been splitted into training set and test set using the best ratio obtained from the analysis above. That is, 70% of the data will be used for training and 30% for test.
+```{r echo=FALSE}
+# using R 3.6 or later
+set.seed(3, sample.kind="Rounding")
+
+# test set will be 30% of whole heartFailures set
+# the rest will become the training set
+test_index <- createDataPartition(y = heartFailures$DEATH_EVENT, times = 1, p = partition_ratio, 
+									  list = FALSE)
+
+# separate predictor columns and the outcome column for training and test sets, to make the code look tidy.
+# variable x for predictors and y for outcome
+test_x <- x_scaled[test_index, ]
+test_y <- heartFailures$DEATH_EVENT[test_index]
+train_x <- x_scaled[-test_index, ]
+train_y <- heartFailures$DEATH_EVENT[-test_index]
+```
+
+In the original dataset, `r mean(heartFailures$DEATH_EVENT == 0)*100`% of samples are indicated as survival. Training set and test set both have similar proportion of samples that indicated as survial, they are `r mean(train_y == 0)*100`% and `r mean(test_y == 0)*100`%, respectively.  
+
+# Methods/Algorithms
+I started with Logistic Regression, then used six different algorithms as comparison.  
+
+## Logistic Regression:
+Logistic Regression model uses logistic function and log odds to solve binary classification task. Logistic Regression gives probability of the likelihood of an event to happen between 0 and 1, as well as how much more likely something will happen. As there are only two outcomes or classes (0 or 1) in the dataset, this is a binary classification problem. So, I picked up Logistic Regression to start with.  
+
+I used cross-validation to train and tune the model.  
+
+## KNN: 
+Similar cases with the same class labels are near each other. For example, similar “survival” cases have some common body, lifestyle, and clinical information. KNN is selected to create a model to build on the similarity of one case to the others.  
+
+I used cross-validation to train and tune the model.  
+
+### Parameter tuning:
+The parameter *k* is the tuning parameter in this model. I created a sequence of *k* value for tuning - from 1 to 21, jump by 3. Cross-validation will find the best tuned *k* value while training the model.  
+
+## LDA:
+LDA can be used to solve binary classification problem. After the standardization, all the columns have the same standard deviation 1. By forcing the assumption that all features share the same correlations, LDA will be similar to Logistic Regression, the boundary will be a line to separate two classes.  
+
+I used cross-validation to train and tune the model.  
+
+## Decision tree: 
+Decision tree can be used to solve classification problem. It is a flowchart-like structure that builds all possible decision paths in the form of a tree, the leaf nodes contain the possible outcomes. The heart failure dataset contains body, lifestyle, and clinical information, there might be some decision rules that can be used to determined whether a patient will survive or died.  
+
+I used cross-validation to train and tune the model.  
+
+### Parameter tuning:
+The parameter *cp* is the tuning parameter in this model. I created a sequence of *cp* value for tuning - from 0 to 0.1, jump by 0.001. Cross-validation will find the best tuned *cp* value while training the model.  
+
+## Random forest: 
+The reason of choosing Random forest is similar to Decision tree, as they are all tree-based algorithm. Random forest randomly selects number of features and constructs multiple trees which solves overfitting problem where the Decision tree might have; as well as to improve the prediction performance.  
+
+I used cross-validation to train and tune the model.  
+
+### Parameter tuning:
+The parameter *mtry* is the tuning parameter in this model. I created a sequence of *mtry* value for tuning - from 3 to 11, jump by 2. Cross-validation will find the best tuned *mtry* value while training the model.  
+
+## SVM Linear:
+SVM Linear is used to solve bi-classification problem, which could be used to solve this classification problem. It assumes the two classes are linear separable. The boundary will be line or hyper-plane to separate two classes.  
+
+I used cross-validation to train and tune the model.  
+
+## Ensemble:
+To improve the accuracy, I built an Ensemble model. The ensemble draws the prediction based on the majority of the votes using all predicted results obtained from previous models. Therefore, there is no training for this model.  
+
+# Results and Performance
+To evaluate how a model does, I computed accuracy on training, accuracy on test, sensitivity (TPR), the false positive rate (FPR), recall, precision, and F1-score.  
+
+To understand more about the trained model, I printed important features that have been used in that model. By visualizing the predicted results, I can see what have been predicted correctly and wrongly. In the plots, I picked up the first two features as x-axis and y-axis, respectively.  
+
+**Note that, the positive class used in all models is 0, the “survival” class. As 0 appears before 1 in the dataset.**
+
+## Logistic Regression:
+The Logistic Regression model does reasonably well (Table 11).  
+
+* The accuracy on test is higher than the accuracy on training.
+* The FPR is low, while TPR is high. The F1-score shows the precision and recall are well balanced.
+* This model has lower performance when classifying the “death” class (by FPR and Figure 1).
+```{r echo=FALSE}
+##########################################################################################################
+# 
+# Method: Logistic regression
+#
+##########################################################################################################
+
+# using R 3.6 or later
+set.seed(5, sample.kind="Rounding")
+
+train_glm <- train(train_x, as.factor(train_y), method="glm")
+glm_preds <- predict(train_glm, test_x)
+
+# Create a table to store accuracy and evaluation results
+# FPR - False positive rate
+# TPR - Sensitivity
+evaluation_results <- tibble(Method = "Logistic regression",
+					   Accuracy_on_training = train_glm$results["Accuracy"][[1]],
+					   Accuracy_on_test = mean(glm_preds == as.factor(test_y)),
+					   FPR = 1 - specificity(factor(glm_preds), as.factor(test_y)),
+					   TPR = sensitivity(factor(glm_preds), as.factor(test_y)),
+					   Recall = sensitivity(factor(glm_preds), as.factor(test_y)),
+					   Precision = precision(factor(glm_preds), as.factor(test_y)),
+					   F_1 = F_meas(factor(glm_preds), as.factor(test_y)))
+```
+
+```{r echo=FALSE}
+evaluation_results %>% kable("latex", booktabs=T, caption="display evaluation results of the Logistic Regression model") %>% kable_styling(position = "center", latex_options = "hold_position")
+```
+
+```{r echo=FALSE}
+# plot the preditions and mark the incorrect values
+preds_plot <- test_x %>% ggplot(aes(age, anaemia, color = as.factor(glm_preds), shape=ifelse(glm_preds == as.factor(test_y), "Correct","Incorrect"))) + 
+    geom_jitter(size=3, width = 0.1, alpha = 0.8) + 
+    ggtitle("Predict")
+preds_plot
+```
+\begin{center} Figure 1: visualize predicted results from the Logistic Regression model \end{center}   
+
+The top three important features in the Logistic Regression model are ‘time’, ‘ejection_fraction’, and ‘serum_creatinine’, as below.  
+```{r echo=FALSE}
+# show important variables in this model
+varImp(train_glm)
+```
+
+## KNN: 
+The KNN model is the worst model so far (Table 12):  
+
+* By looking at the accuracy on test, the KNN model is worse than the Logistic Regression model.
+* The accuracy on test is higher than the accuracy on training.
+* Although the TPR is high and F1-score shows the precision and recall are well balanced. FPR is very high. 
+* This model fails to classify actual “death” as “death” (by FPR and Figure 2). Because the prevalence is low in the dataset, failing to classify the death samples does not lower the accuracy as much.
+```{r echo=FALSE, results="hide"}
+##########################################################################################################
+# 
+# Method: KNN
+#
+##########################################################################################################
+
+# using R 3.6 or later
+set.seed(9, sample.kind="Rounding")
+
+# tune the parameters
+tuning <- data.frame(k = seq(1, 21, 3))
+train_knn <- train(train_x, as.factor(train_y), method="knn", tuneGrid = tuning)
+
+# print the value of k that maximizes accuracy 
+train_knn$bestTune
+
+knn_preds <- predict(train_knn, test_x)
+
+# Create a table to store accuracy and evaluation results
+# FPR - False positive rate
+# TPR - Sensitivity
+evaluation_results <- bind_rows(evaluation_results,
+							tibble(Method = "KNN",
+							Accuracy_on_training = train_knn$results$Accuracy[which(train_knn$bestTune$k == train_knn$results$k)],
+							Accuracy_on_test = mean(knn_preds == as.factor(test_y)),
+							FPR = 1 - specificity(factor(knn_preds), as.factor(test_y)),
+							TPR = sensitivity(factor(knn_preds), as.factor(test_y)),
+							Recall = sensitivity(factor(knn_preds), as.factor(test_y)),
+							Precision = precision(knn_preds, as.factor(test_y)),
+							F_1 = F_meas(factor(glm_preds), as.factor(test_y))))
+```
+
+```{r echo=FALSE}
+evaluation_results %>% kable("latex", booktabs=T, caption="display evaluation results of the KNN model") %>% kable_styling(position = "center", latex_options = "hold_position")
+```
+ 
+```{r echo=FALSE}
+# plot the preditions and mark the incorrect values
+preds_plot <- test_x %>% ggplot(aes(age, anaemia, color = as.factor(knn_preds), shape=ifelse(knn_preds == as.factor(test_y), "Correct","Incorrect"))) + 
+    geom_jitter(size=3, width = 0.1, alpha = 0.8) + 
+    ggtitle("Predict")
+preds_plot	
+```
+\begin{center} Figure 2: visualize predicted results from the KNN model \end{center}  
+
+The top three important features in the KNN model are ‘time’, ‘serum_creatinine’, and ‘ejection_fraction’, as below.  
+```{r echo=FALSE}
+# show important variables in this model
+varImp(train_knn)
+```
+
+The optimized parameter *k* that gives the highest accuracy is `r train_knn$bestTune`.  
+
+## LDA:
+The LDA model does reasonably well, the results are the same as of the Logistic Regression model, apart from the accuracy on training (Table 13):  
+
+* The accuracy on test is higher than the accuracy on training.
+* The FPR is low, while TPR is high. The F1-score shows the precision and recall are well balanced.
+* This model has lower performance when classifying the “death” class (by FPR and Figure 3).
+```{r echo=FALSE}
+##########################################################################################################
+# 
+# Method: LDA
+#
+##########################################################################################################
+
+# using R 3.6 or later
+set.seed(5, sample.kind="Rounding")
+
+train_lda <- train(train_x, as.factor(train_y), method="lda")
+lda_preds <- predict(train_lda, test_x)
+
+# Create a table to store accuracy and evaluation results
+# FPR - False positive rate
+# TPR - Sensitivity
+evaluation_results <- bind_rows(evaluation_results,
+							tibble(Method = "LDA",
+							Accuracy_on_training = train_lda$results["Accuracy"][[1]],
+							Accuracy_on_test = mean(lda_preds == as.factor(test_y)),
+							FPR = 1 - specificity(factor(lda_preds), as.factor(test_y)),
+							TPR = sensitivity(factor(lda_preds), as.factor(test_y)),
+							Recall = sensitivity(factor(lda_preds), as.factor(test_y)),
+							Precision = precision(factor(lda_preds), as.factor(test_y)),
+							F_1 = F_meas(factor(glm_preds), as.factor(test_y))))
+```
+
+```{r echo=FALSE}
+evaluation_results %>% kable("latex", booktabs=T, caption="display evaluation results of the LDA model") %>% kable_styling(position = "center", latex_options = "hold_position")
+```
+
+```{r echo=FALSE}
+# plot the preditions and mark the incorrect values
+preds_plot <- test_x %>% ggplot(aes(age, anaemia, color = as.factor(lda_preds), shape=ifelse(lda_preds == as.factor(test_y), "Correct","Incorrect"))) + 
+    geom_jitter(size=3, width = 0.1, alpha = 0.8) + 
+    ggtitle("Predict")
+preds_plot
+```
+\begin{center} Figure 3: visualize predicted results from the LDA model \end{center}  
+
+The top three important features in the LDA model are ‘time’, ‘serum_creatinine’, and ‘ejection_fraction’, as below.  
+```{r echo=FALSE}
+# show important variables in this model
+varImp(train_lda)
+```
+
+## Decision tree: 
+The Decision tree model is the best model so far (Table 14):  
+
+* By looking at the accuracy on test, the Decision tree model is better than the Logistic Regression model.
+* The accuracy on test is higher than the accuracy on training.
+* The FPR is low, while TPR is high. The F1-score shows the precision and recall are well balanced.
+* Comparing to the Logistic Regression model, the FPR and F1-score are the same, while the Decision tree model successfully classifies more “survival” samples (by TPR and Figure 4).
+```{r echo=FALSE, results="hide"}
+##########################################################################################################
+# 
+# Method: Decision tree
+#
+##########################################################################################################
+
+# using R 3.6 or later
+set.seed(13, sample.kind="Rounding")
+
+# tune the parameters
+tuning_rpart <- data.frame(cp = seq(0, 0.1, 0.001))
+train_rpart <- train(train_x, as.factor(train_y), method="rpart", tuneGrid = tuning_rpart)
+
+# print the value of cp that maximizes accuracy
+train_rpart$bestTune
+
+rpart_preds <- predict(train_rpart, test_x)
+
+# Create a table to store accuracy and evaluation results
+# FPR - False positive rate
+# TPR - Sensitivity
+evaluation_results <- bind_rows(evaluation_results,
+							tibble(Method = "Decision tree",
+							Accuracy_on_training = train_rpart$results$Accuracy[which(train_rpart$bestTune$cp == train_rpart$results$cp)],
+							Accuracy_on_test = mean(rpart_preds == as.factor(test_y)),
+							FPR = 1 - specificity(factor(rpart_preds), as.factor(test_y)),
+							TPR = sensitivity(factor(rpart_preds), as.factor(test_y)),
+							Recall = sensitivity(factor(rpart_preds), as.factor(test_y)),
+							Precision = precision(factor(rpart_preds), as.factor(test_y)),
+							F_1 = F_meas(factor(glm_preds), as.factor(test_y))))
+```
+
+```{r echo=FALSE}
+evaluation_results %>% kable("latex", booktabs=T, caption="display evaluation results of the Decision tree model") %>% kable_styling(position = "center", latex_options = "hold_position")
+```
+ 
+```{r echo=FALSE}
+# plot the preditions and mark the incorrect values
+preds_plot <- test_x %>% ggplot(aes(age, anaemia, color = as.factor(rpart_preds), shape=ifelse(rpart_preds == as.factor(test_y), "Correct","Incorrect"))) + 
+    geom_jitter(size=3, width = 0.1, alpha = 0.8) + 
+    ggtitle("Predict")
+preds_plot
+```
+\begin{center} Figure 4: visualize predicted results from the Decision tree model \end{center}  
+
+The Decision tree model only uses one feature, i.e., ‘time’. We can interpret the decision rule as “if the time or follow-up period is equal or more than -0.7313 (the value is after the scale), the sample can be marked as 'survival'; otherwise 'death'” (Figure 5).  
+ 
+```{r echo=FALSE, fig.height=3, fig.width=5}
+# plot to see the shape of the tree
+plot(train_rpart$finalModel, margin = 0.1)
+text(train_rpart$finalModel, cex = 0.75)
+```
+\begin{center} Figure 5: display the shape of the tree \end{center}  
+
+The top three important features in the Decision tree model are ‘time’, ‘ejection_fraction’, and ‘serum_creatinine’, as below.  
+```{r echo=FALSE}
+# show important variables in this model
+varImp(train_rpart)
+```
+
+The optimized parameter *cp* that gives the highest accuracy is `r train_rpart$bestTune`.  
+
+## Random forest: 
+The Random forest model does reasonably well (Table 15):  
+
+* By looking at the accuracy on test, the Random forest model is better than the Logistic Regression model, but worse than the Decision tree model.
+* The accuracy on test is higher than the accuracy on training.
+* The FPR is low, while TPR is high. The F1-score shows the precision and recall are well balanced.
+* Comparing to the Logistic Regression model, the F1-score is the same, while other results are better than the Logistic Regression model.
+* Comparing to the Decision tree model, this Random forest model classifies more “death” samples, but less “survival” samples (by FPR, TPR, and Figure 6), although the overall accuracy is lower than the Decision tree model.
+```{r echo=FALSE, results="hide"}
+##########################################################################################################
+# 
+# Method: Random forest
+#
+##########################################################################################################
+
+# using R 3.6 or later
+set.seed(25, sample.kind="Rounding")
+
+# tune the parameters
+tuning_rf <- data.frame(mtry = seq(3, 11, 2))
+train_rf <- train(train_x, as.factor(train_y), method="rf", ntree=100, tuneGrid=tuning_rf, importance=TRUE)
+
+# print the value of mtry that maximizes accuracy
+train_rf$bestTune
+
+rf_preds <- predict(train_rf, test_x)
+
+# Create a table to store accuracy and evaluation results
+# FPR - False positive rate
+# TPR - Sensitivity
+evaluation_results <- bind_rows(evaluation_results,
+							tibble(Method = "Random forest",
+							Accuracy_on_training = train_rf$results$Accuracy[which(train_rf$bestTune$mtry == train_rf$results$mtry)],
+							Accuracy_on_test = mean(rf_preds == as.factor(test_y)),
+							FPR = 1 - specificity(factor(rf_preds), as.factor(test_y)),
+							TPR = sensitivity(factor(rf_preds), as.factor(test_y)),
+							Recall = sensitivity(factor(rf_preds), as.factor(test_y)),
+							Precision = precision(factor(rf_preds), as.factor(test_y)),
+							F_1 = F_meas(factor(glm_preds), as.factor(test_y))))
+```
+
+```{r echo=FALSE}
+evaluation_results %>% kable("latex", booktabs=T, caption="display evaluation results of the Random forest model") %>% kable_styling(position = "center", latex_options = "hold_position")
+```
+
+```{r echo=FALSE}
+# plot the preditions and mark the incorrect values
+preds_plot <- test_x %>% ggplot(aes(age, anaemia, color = as.factor(rf_preds), shape=ifelse(rf_preds == as.factor(test_y), "Correct","Incorrect"))) + 
+    geom_jitter(size=3, width = 0.1, alpha = 0.8) + 
+    ggtitle("Predict")
+preds_plot
+```
+\begin{center} Figure 6: visualize predicted results from the Random forest model \end{center}  
+
+As Random forest randomly selects features, by selecting about 2 to 3 features, the model reaches the highest accuracy (Figure 7).  
+```{r echo=FALSE, fig.height=3, fig.width=5}
+# plot to see how many features being selected that gives the highest accuracy
+ggplot(train_rf)
+```
+\begin{center} Figure 7: display accuracy against number of features being selected  \end{center}  
+
+The top three important features in the Random forest model are ‘time’, ‘ejection_fraction’, and ‘serum_creatinine’, as below.  
+```{r echo=FALSE}
+# show important variables in this model
+varImp(train_rf)
+```
+
+The optimized parameter *mtry* that gives the highest accuracy is `r train_rf$bestTune`.  
+
+## SVM Linear:
+The SVM Linear model does reasonably well, the results are the same as of the Logistic Regression model, apart from the accuracy on training (Table 16):  
+
+* The accuracy on test is higher than the accuracy on training.
+* The FPR is low, while TPR is high. The F1-score shows the precision and recall are well balanced.
+* This model has lower performance when classifying the “death” class (by FPR and Figure 8).
+```{r echo=FALSE}
+##########################################################################################################
+# 
+# Method: SVM Linear
+#
+##########################################################################################################
+
+# using R 3.6 or later
+set.seed(33, sample.kind="Rounding")
+
+train_svm <- train(train_x, as.factor(train_y), method="svmLinear")
+svm_preds <- predict(train_svm, test_x)
+
+# Create a table to store accuracy and evaluation results
+# FPR - False positive rate
+# TPR - Sensitivity
+evaluation_results <- bind_rows(evaluation_results,
+							tibble(Method = "SVM Linear",
+							Accuracy_on_training = train_svm$results["Accuracy"][[1]],
+							Accuracy_on_test = mean(svm_preds == as.factor(test_y)),
+							FPR = 1 - specificity(factor(svm_preds), as.factor(test_y)),
+							TPR = sensitivity(factor(svm_preds), as.factor(test_y)),
+							Recall = sensitivity(factor(svm_preds), as.factor(test_y)),
+							Precision = precision(factor(svm_preds), as.factor(test_y)),
+							F_1 = F_meas(factor(glm_preds), as.factor(test_y))))
+```
+
+```{r echo=FALSE}
+evaluation_results %>% kable("latex", booktabs=T, caption="display evaluation results of the SVM Linear model") %>% kable_styling(position = "center", latex_options = "hold_position")
+```
+ 
+```{r echo=FALSE}
+# plot the preditions and mark the incorrect values
+preds_plot <- test_x %>% ggplot(aes(age, anaemia, color = as.factor(svm_preds), shape=ifelse(svm_preds == as.factor(test_y), "Correct","Incorrect"))) + 
+    geom_jitter(size=3, width = 0.1, alpha = 0.8) + 
+    ggtitle("Predict")
+preds_plot
+```
+\begin{center} Figure 8: visualize predicted results from the SVM Linear model \end{center}  
+
+The top three important features in the SVM Linear model are ‘time’, ‘serum_creatinine’, and ‘ejection_fraction’, as below.  
+```{r echo=FALSE}
+# show important variables in this model
+varImp(train_svm)
+```
+
+## Ensemble:
+As the Ensemble combines all the predicted results from previous models, no accuracy will be given on training, as well as no important features.  
+
+The Ensemble model is one of the best models, apart from the Decision tree model (Table 17):  
+
+* By looking at the accuracy on test, the Ensemble model is better than the Logistic Regression model and the same as of the Decision tree model.
+* The accuracy on test is higher than the accuracy on training.
+* The FPR is low, while TPR is high. The F1-score shows the precision and recall are well balanced.
+* Comparing to the Logistic Regression and Decision tree models, the F1-score is the same, while there are some highs and lows on other results. This Ensemble model classifies more “survival” samples, but less “death” samples (by TPR, FPR, and Figure 9).
+```{r echo=FALSE}
+##########################################################################################################
+# 
+# Method: Ensemble
+#
+##########################################################################################################
+
+# using R 3.6 or later
+set.seed(15, sample.kind="Rounding")
+
+# binding predictions from all the methods we used above
+ensemble <- cbind(glm = glm_preds == 0, knn = knn_preds == 0, lda = lda_preds == 0, rpart = rpart_preds == 0, rf = rf_preds == 0, svmLinear = svm_preds == 0)
+
+# calculate the average of all training set accuracy
+avg_accuracy <- mean(evaluation_results$Accuracy_on_training)
+
+# only voting on the methods that are above the training average
+# ensemble draw the prediction based on the majority of the votes
+ind <- evaluation_results$Accuracy_on_training >= avg_accuracy
+votes <- rowMeans (ensemble[, ind] == TRUE)
+ensemble_preds <- ifelse(votes >= 0.5, 0, 1)
+
+# Create a table to store accuracy and evaluation results
+# FPR - False positive rate
+# TPR - Sensitivity
+evaluation_results <- bind_rows(evaluation_results,
+							tibble(Method = "Ensemble",
+							Accuracy_on_training = 0.00,
+							Accuracy_on_test = mean(ensemble_preds == test_y),
+							FPR = 1 - specificity(factor(ensemble_preds), as.factor(test_y)),
+							TPR = sensitivity(factor(ensemble_preds), as.factor(test_y)),
+							Recall = sensitivity(factor(ensemble_preds), as.factor(test_y)),
+							Precision = precision(factor(ensemble_preds), as.factor(test_y)),
+							F_1 = F_meas(factor(glm_preds), as.factor(test_y))))
+```
+
+```{r echo=FALSE}
+evaluation_results %>% kable("latex", booktabs=T, caption="display evaluation results of the Ensemble") %>% kable_styling(position = "center", latex_options = "hold_position")
+```
+  
+```{r echo=FALSE}
+# plot the preditions and mark the incorrect values
+preds_plot <- test_x %>% ggplot(aes(age, anaemia, color = as.factor(ensemble_preds), shape=ifelse(ensemble_preds == as.factor(test_y), "Correct","Incorrect"))) + 
+    geom_jitter(size=3, width = 0.1, alpha = 0.8) + 
+    ggtitle("Predict")
+preds_plot
+```
+\begin{center} Figure 9: visualize predicted results from the Ensemble \end{center}  
+
+## Summary:
+```{r echo=FALSE}
+##########################################################################################################
+# 
+# Compare accuracy on test set
+#
+##########################################################################################################
+
+avg_accuracy_test <- mean(evaluation_results$Accuracy_on_test)
+```
+The average accuracy on test is `r avg_accuracy_test`.  
+
+```{r echo=FALSE}
+# show the methods that are equal or above the average accuracy on test
+ind <- evaluation_results$Accuracy_on_test >= avg_accuracy_test
+```
+The models that are equal or above the average are `r evaluation_results$Method[ind]`.  
+
+Overall, no model is overtrained, as the accuracy on test is higher than the accuracy on training. The Decision tree and Ensemble models give the highest accuracy which is 0.91111. The KNN model gives the lowest accuracy which is 0.74444. The Ensemble model is more accurate when classifying the “survival” class. The Random forest model is more accurate when classifying the “death” class; while the KNN model performs poorly when classifying the “death” class. (Table 17)  
+
+Linear algorithms, e.g., Logistic Regression, LDA, and SVM Linear, give the same accuracy on test. Tree-based algorithms are better than linear or distance-based algorithms in this classification task. Because the data points of the two classes are mixed together and some data points of these two classes are very close in distance.  
+
+The Decision tree and Random forest models are slow compared to other models. Because Decision tree uses recursive partitioning to create the model and Random forest creates a large number of tree, these make algorithms slow. The Decision tree, Random forest, and Ensemble models have good overall performance. They are more advanced than Logistic Regression model.  
+
+# Conclusion
+
+## Insights:
+From the most important features given by each model, we can see that the feature ‘time’ is given 100% on the top of the most important feature list. It means the ‘time’ feature has 100% predictive power in the model. Features ‘serum_creatinine’ and ‘ejection_fraction’ are always ranked as second or third on the list. These two features also have some predictive power in the model. While 'smoking', 'diabetes', and 'high_blood_pressure' are far more down the list, i.e., they don’t have much predictive power in the model.  
+
+We can see the reflection from the correlation between the outcome and these features. Feature ‘time’ has great negative relationship to the outcome; ‘ejection_fraction’ and ‘serum_creatinine’ have less negative and positive relationships to the outcome, respectively; while 'smoking', 'diabetes', and 'high_blood_pressure' have much weaker relationships to the outcome. (Table 18)
+
+```{r echo=FALSE}
+feature_cor <- tibble(Feature = c("\'time\'", "\'ejection_fraction\'", "\'serum_creatinine\'","\'smoking\'", "\'diabetes\'", "\'high_blood_pressure\'"), 
+                      Correlation = c(cor(heartFailures$time, heartFailures$DEATH_EVENT), cor(heartFailures$ejection_fraction, heartFailures$DEATH_EVENT), cor(heartFailures$serum_creatinine, heartFailures$DEATH_EVENT), cor(heartFailures$smoking, heartFailures$DEATH_EVENT), cor(heartFailures$diabetes, heartFailures$DEATH_EVENT), cor(heartFailures$high_blood_pressure, heartFailures$DEATH_EVENT)))
+
+feature_cor %>% kable("latex", booktabs=T, caption="display the correlation between the outcome and the feature") %>% kable_styling(position = "center", latex_options = "hold_position")
+```
+
+These findings approve that smoking, diabetes, and high blood pressure can be considered as low risk factors to the death by heart failure; while ‘ejection_fraction’ and ‘serum_creatinine’ are high risk factors. Features 'time', ‘ejection_fraction’, and ‘serum_creatinine’ have predictive power.  
+
+## Limitations:
+There are some limitations in this project:  
+
+* Because the prevalence is low in the dataset and the positive class is 0 (“survival” class), failing to classify the death samples does not lower the accuracy as much.
+* I used all features in the model, the prediction process could take longer. For Logistic Regression model, when using cross-validation to train, the time matters, the machine may crash when the process is long.
+* As the data points of the two outcomes are mixed together, which is not linearly separable. Some of the algorithms I picked up are linear-based, the resulting models cannot separate two classes just by drawing a line, plane or hyper-plane.
+
+## Future work:
+I might consider the following in the future work:  
+
+* By changing the positive class to the “death” class, we can see how the model classifies the “death” class clearer. As failing to classify the “death” class is more serious, a patient may miss a chance of having a medical treatment.
+* To speed up the process, I will consider dimension reduction. The findings tell us that we can obtain the same results by only using the ‘time’ feature.
+* We can see that features ‘ejection_fraction’ and ‘serum_creatinine’ also have predictive power. By plotting the data using these two features, we can see two clusters, one for each class (Figure 10). If the outcomes can be predicted only using these two features, the model can directly help medical doctors. “medical doctors aiming at understanding if a patient will survive after heart failure may focus mainly on serum creatinine and ejection fraction.” (Chicco, & Jurman, 2020)
+  
+```{r echo=FALSE}
+# scatter plot ejection_fraction and serum_creatinine
+heartFailures %>%
+		ggplot(aes(ejection_fraction, serum_creatinine, col=as.factor(DEATH_EVENT))) + 
+        geom_point() +
+		stat_ellipse()
+```
+\begin{center} Figure 10: display data by plotting 'serum\_creatinine' against 'ejection\_fraction' \end{center}  
+
+* The data is not linearly separable. To improve the accuracy, I may try Neural Network and non-linear algorithms, such as SVM with kernels. These algorithms can be used to classify the data that is not linearly separable.
+
+## Conclusion:
+I chose the heart failure dataset for this choose-your-own project. This project is about predicting the death event by heart failure using machine learning algorithms.  
+
+I applied standardization to each feature column, so that these features will result in a zero mean and unit variance. Based on the analysis, data partition ratio 0.3 on test gives the highest accuracy on training. So, I split the dataset into training and test sets, in which training set takes 70% of the dataset and the rest becomes test set. From data exploration, I found out that smoking, diabetes, and high blood pressure are low risk factors to heart failure; ejection fraction and serum creatinine are high risk factors. Furthermore, smoking and diabetes increase more risk to women of having heart failure. As the data is not linear separable, linear algorithms (Logistic Regression, LDA, and SVM Linear) are worse than tree-based algorithms (Decision tree and Random forest). The worst algorithm is KNN that gives the lowest accuracy on test; this might due to the close distances between the data points of two different classes. From the most important features given by each model, the feature with most predictive power is ‘time’; ‘ejection_fraction’ and ‘serum_creatinine’ also have predictive power. The feature that is more correlated to the outcome will have more predictive power in the model.  
+
+To improve the speed in the future, I might consider dimension reduction, since features ‘time’, ‘ejection_fraction’, and ‘serum_creatinine’ have much more predictive power than others. As the prevalence is low in the dataset, I will change the positive class to the “death” class. When selecting algorithms, I will consider Neural Network and non-linear algorithms in addition to the tree-based algorithms.  
+
+# References
+Chicco, D., & Jurman, G. (2020). Machine learning can predict survival of patients with heart failure from serum creatinine and ejection fraction alone. *BMC Medical Informatics and Decision Making*, *20*, 16. https://bmcmedinformdecismak.biomedcentral.com/articles/10.1186/s12911-020-1023-5  
+*Feature scaling*. (2020, October). Retrieved from Wikipedia: https://en.wikipedia.org/wiki/Feature_scaling  
+*Heart Failure Prediction*. (2020, July). Retrieved from Kaggle: https://www.kaggle.com/andrewmvd/heart-failure-clinical-data  
